@@ -1,5 +1,5 @@
 # ── Stage 1: install production dependencies ──────────────────
-FROM node:20-alpine AS deps
+FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS deps
 
 WORKDIR /app
 
@@ -7,7 +7,7 @@ COPY package*.json ./
 RUN npm i
 
 # ── Stage 2: lean runtime image ───────────────────────────────
-FROM node:20-alpine
+FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
 
 LABEL maintainer="DevSecOps Lab"
 LABEL service="applications-service"
@@ -17,11 +17,9 @@ RUN apk update && apk upgrade --no-cache && \
 
 WORKDIR /app
 
-COPY --from=deps /app/node_modules ./node_modules
-COPY src/ ./src/
-COPY package.json ./
-
-RUN chown -R appuser:appgroup /app
+COPY --chown=appuser:appgroup --from=deps /app/node_modules ./node_modules
+COPY --chown=appuser:appgroup src/ ./src/
+COPY --chown=appuser:appgroup package.json ./
 
 USER appuser
 

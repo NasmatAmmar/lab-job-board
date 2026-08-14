@@ -1,5 +1,5 @@
 # ── Stage 1: dependency installation ──────────────────────────
-FROM python:3.12-slim AS builder
+FROM python:3.12-slim@sha256:dd29372629eeba2dd003fd9e9d35a5b8236c44727875a0364254b5127af88e65 AS builder
 
 RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
 
@@ -9,7 +9,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 # ── Stage 2: lean runtime image ───────────────────────────────
-FROM python:3.12-slim
+FROM python:3.12-slim@sha256:dd29372629eeba2dd003fd9e9d35a5b8236c44727875a0364254b5127af88e65
 
 LABEL maintainer="DevSecOps Lab"
 LABEL service="jobs-service"
@@ -20,10 +20,7 @@ RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
 WORKDIR /app
 
 COPY --from=builder /install /usr/local
-COPY app/ ./app/
-
-# Change ownership to non-root user
-RUN chown -R appuser:appgroup /app
+COPY --chown=appuser:appgroup app/ ./app/
 
 USER appuser
 
