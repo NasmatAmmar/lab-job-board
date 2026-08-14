@@ -124,27 +124,16 @@ cp .env.example .env
 
 2. Set strong password (16+ chars, mixed case + symbols):
 
-```dotenv
-POSTGRES_PASSWORD=S3cure_LabJobB0ard-2026
-```
 
 3. Removed default password fallback from compose so env is required:
 - From: `${POSTGRES_PASSWORD:-jobboard123}`
-- To: `${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}`
+- To: `${POSTGRES_PASSWORD:?POSTGRES_PASSWORD}`
 
 4. Confirmed removing `.env` breaks config/stack startup:
 
-```text
-NO_ENV_EXIT=1
-error while interpolating services.postgres.environment.POSTGRES_PASSWORD:
-required variable POSTGRES_PASSWORD is missing a value
-```
 
 5. Restored `.env` and confirmed config works:
 
-```text
-RESTORE_EXIT=0
-```
 
 6. Verified `.env` is not staged for commit:
 - `git status --short` did not show `.env`.
@@ -152,12 +141,7 @@ RESTORE_EXIT=0
 
 ### Why committing `.env` is a security risk
 
-If `.env` is committed, secrets (DB passwords, API tokens, credentials) are exposed in Git history and can be copied by anyone with repository access. Even if removed later, secrets can remain in previous commits and mirrors/forks.
-
-Recommended prevention tools:
-- `git-secrets` (blocks committing known secret patterns)
-- `truffleHog` (scans repos/history for leaked secrets)
-- GitHub Secret Scanning (detects exposed secrets in pushed commits)
+If `.env` is committed, secrets are exposed in Git history and can be copied by anyone with repository access. Even if removed later, secrets can remain in previous commits.
 
 ## 2.3 Service restart policy and dependency ordering
 
@@ -370,3 +354,103 @@ docker exec jobboard-db psql -U postgres -d jobboard -f /tmp/restore.sql
 # 4) Start remaining services
 docker compose up -d
 ```
+
+---------------------------------------------------------------------------------------
+
+# Task 4 — CI/CD Pipeline with GitHub Actions
+
+![alt text](image.png)
+
+![alt text](image-1.png)
+---------------------------------------------------------------------------------------
+
+# Task 5 — Networking & Service Communication
+
+## 5.1 Understand the Docker network
+
+Command used:
+
+```bash
+docker network inspect jobboard-network
+```
+
+Containers on `jobboard-network` and their IP addresses:
+- `jobboard-db` -> `172.19.0.2/16`
+- `applications-service` -> `172.19.0.3/16`
+- `jobs-service` -> `172.19.0.4/16`
+- `jobboard-frontend` -> `172.19.0.5/16`
+- `nginx-proxy` -> `172.19.0.6/16`
+
+How `jobs-service` resolves `postgres`:
+- Docker Compose attaches both containers to the same user-defined bridge network (`jobboard-network`).
+- Docker's embedded DNS server automatically registers service/container names.
+- Inside containers, `postgres` resolves to the DB container IP (in this run: `172.19.0.2`).
+
+What happens if trying to reach `jobs-service:8000` from browser directly:
+- `http://jobs-service:8000/...` from host browser fails DNS resolution (`Could not resolve host: jobs-service`) because that name exists only inside Docker network DNS.
+- `http://localhost:8000/...` also fails (`connection refused`) because port `8000` is not published to host; only nginx publishes port `80`.
+
+## 5.2 Inter-service communication test
+
+Command used from README (executed non-interactive):
+
+```bash
+docker exec jobs-service python3 -c "
+import psycopg2
+import os
+conn = psycopg2.connect(os.environ['DATABASE_URL'])
+print('Connected to PostgreSQL:', conn.get_dsn_parameters())
+conn.close()
+"
+```
+
+Observed result:
+- Connection succeeded.
+- DSN output showed host `postgres`, db `jobboard`, port `5432`.
+
+Additional in-network check from `jobs-service`:
+- Request to `http://applications-service:3001/health` returned:
+  `{"status":"healthy","service":"applications-service","version":"1.0.0"}`
+
+## 5.3 Nginx routing analysis
+
+Request traced:
+
+`Browser -> POST http://localhost/api/applications/`
+
+1. Matching nginx `location` block:
+- `location /api/applications` in `nginx/nginx.conf`
+
+2. Rewrite transformation:
+- For trailing slash path, this rule applies:
+  `rewrite ^/api/applications/(.*) /applications/$1 break;`
+- So `/api/applications/` becomes `/applications/`.
+
+3. Upstream target:
+- `proxy_pass http://applications_service;`
+- Upstream `applications_service` maps to `applications-service:3001`.
+- That request is then handled by Express route `app.use('/applications', applicationsRouter)`.
+
+4. Response path back to browser:
+- `applications-service` processes request and returns JSON/HTTP status.
+- Nginx forwards the upstream response back through `nginx-proxy:80` to the client browser.
+
+Validation request used:
+
+```bash
+curl -X POST http://localhost/api/applications/ ...
+```
+
+Observed status/result:
+- HTTP `201`
+- JSON body returned with new application id (`3742c7fd-ffbe-415f-a78c-3fc83aee02bc`).
+
+--------------
+
+Screenshots:
+
+![docker compose ps](image-2.png)
+
+![Swagger](image-3.png)
+
+![running application at `http://localhost:80`](image-5.png)
