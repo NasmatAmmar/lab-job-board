@@ -1,7 +1,7 @@
 import uuid
-from typing import List
+from typing import Annotated
 
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
@@ -30,13 +30,13 @@ def health_check():
     return {"status": "healthy", "service": "jobs-service", "version": "1.0.0"}
 
 
-@app.get("/jobs", response_model=List[schemas.Job], tags=["Jobs"])
-def list_jobs(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+@app.get("/jobs", response_model=list[schemas.Job], tags=["Jobs"])
+def list_jobs(db: Annotated[Session, Depends(get_db)], skip: int = 0, limit: int = 100):
     return db.query(models.Job).offset(skip).limit(limit).all()
 
 
 @app.post("/jobs", response_model=schemas.Job, status_code=status.HTTP_201_CREATED, tags=["Jobs"])
-def create_job(job: schemas.JobCreate, db: Session = Depends(get_db)):
+def create_job(job: schemas.JobCreate, db: Annotated[Session, Depends(get_db)]):
     db_job = models.Job(id=str(uuid.uuid4()), **job.model_dump())
     db.add(db_job)
     db.commit()
@@ -45,7 +45,7 @@ def create_job(job: schemas.JobCreate, db: Session = Depends(get_db)):
 
 
 @app.get("/jobs/{job_id}", response_model=schemas.Job, tags=["Jobs"])
-def get_job(job_id: str, db: Session = Depends(get_db)):
+def get_job(job_id: str, db: Annotated[Session, Depends(get_db)]):
     job = db.query(models.Job).filter(models.Job.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
@@ -53,7 +53,7 @@ def get_job(job_id: str, db: Session = Depends(get_db)):
 
 
 @app.put("/jobs/{job_id}", response_model=schemas.Job, tags=["Jobs"])
-def update_job(job_id: str, updates: schemas.JobCreate, db: Session = Depends(get_db)):
+def update_job(job_id: str, updates: schemas.JobCreate, db: Annotated[Session, Depends(get_db)]):
     job = db.query(models.Job).filter(models.Job.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
@@ -65,7 +65,7 @@ def update_job(job_id: str, updates: schemas.JobCreate, db: Session = Depends(ge
 
 
 @app.delete("/jobs/{job_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Jobs"])
-def delete_job(job_id: str, db: Session = Depends(get_db)):
+def delete_job(job_id: str, db: Annotated[Session, Depends(get_db)]):
     job = db.query(models.Job).filter(models.Job.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")

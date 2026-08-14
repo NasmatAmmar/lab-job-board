@@ -10,9 +10,9 @@ from sqlalchemy.pool import StaticPool
 # Force app startup to avoid using PostgreSQL in tests.
 os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
 
-from app import models  # noqa: E402
-from app.database import Base, get_db  # noqa: E402
-from app.main import app  # noqa: E402
+from app import models
+from app.database import Base, get_db
+from app.main import app
 
 TEST_DATABASE_URL = "sqlite+pysqlite:///:memory:"
 engine = create_engine(
