@@ -9,6 +9,7 @@ from . import models, schemas
 from .database import engine, get_db
 
 models.Base.metadata.create_all(bind=engine)
+SERVICE_VERSION = "2.0.0"
 
 app = FastAPI(
     title="Jobs Service",
@@ -25,17 +26,26 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def add_version_header(request, call_next):
+    response = await call_next(request)
+    response.headers["X-Jobs-Service-Version"] = SERVICE_VERSION
+    return response
+
+
 @app.get("/health", tags=["Health"])
 def health_check():
-    return {"status": "healthy", "service": "jobs-service", "version": "1.0.0"}
+    return {"status": "healthy", "service": "jobs-service", "version": SERVICE_VERSION}
 
 
 @app.get("/jobs", response_model=list[schemas.Job], tags=["Jobs"])
+@app.get("/jobs/", response_model=list[schemas.Job], include_in_schema=False, tags=["Jobs"])
 def list_jobs(db: Annotated[Session, Depends(get_db)], skip: int = 0, limit: int = 100):
     return db.query(models.Job).offset(skip).limit(limit).all()
 
 
 @app.post("/jobs", response_model=schemas.Job, status_code=status.HTTP_201_CREATED, tags=["Jobs"])
+@app.post("/jobs/", response_model=schemas.Job, status_code=status.HTTP_201_CREATED, include_in_schema=False, tags=["Jobs"])
 def create_job(job: schemas.JobCreate, db: Annotated[Session, Depends(get_db)]):
     db_job = models.Job(id=str(uuid.uuid4()), **job.model_dump())
     db.add(db_job)
