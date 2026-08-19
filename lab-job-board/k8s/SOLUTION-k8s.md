@@ -133,7 +133,7 @@ Answers:
 
 Requested flow:
 
-POST http://<minikube-ip>/api/applications/
+POST http://{minikube-ip}/api/applications/
 
 Verification commands and outputs:
 
@@ -187,7 +187,7 @@ $ curl -sv -X POST http://127.0.0.1:56507/api/applications/ \
 {"id":"d1f65bc9-527e-41cd-934a-421b0b8e77cc","job_id":"job-001","applicant_name":"Task2 User","applicant_email":"task2@lab.com","cover_letter":null,"status":"pending","created_at":"2026-08-16T18:38:42.901Z"}
 ```
 
-Full request journey (hop-by-hop):
+Full request journey:
 
 1. Which Ingress matches?
 	 - applications-ingress matches path /api/applications(/|$)(.*).
@@ -208,10 +208,6 @@ Full request journey (hop-by-hop):
 5. Node.js handler return:
 	 - Route POST /applications validates required fields and email, inserts into postgres, and returns HTTP 201 with the created application row (id, job_id, applicant_name, applicant_email, cover_letter, status, created_at).
 
-Why this matters:
-	 - Ingress does path matching and rewrite.
-	 - Service does stable virtual routing.
-	 - Endpoint list is the real final backend target set.
 
 #### 2.2 - Why three Ingress objects? (4 pts)
 
@@ -231,9 +227,6 @@ Why this matters:
 		 - applications-service serves /api/applications directly
 	 - Then one Ingress can route by prefix only, without rewrite-target annotation conflicts.
 
-Learning point:
-	 - Keep URI contracts explicit. Either normalize in app code (no rewrite) or isolate rewrites into separate ingress resources.
-
 #### 2.3 - NodePort vs ClusterIP vs LoadBalancer (4 pts)
 
 Comparison table:
@@ -241,7 +234,7 @@ Comparison table:
 | Type | Reachable from | Use case | Example in this lab |
 |------|----------------|----------|---------------------|
 | ClusterIP | Only inside cluster (pods/services) | Internal service-to-service traffic | jobs-service, applications-service, frontend, postgres services (default state) |
-| NodePort | Outside cluster via node IP + high port | Simple external access in local/dev clusters | frontend temporarily patched to NodePort (port 31004) |
+| NodePort | Outside cluster via node IP + high port | Simple external access | frontend |
 | LoadBalancer | External clients via cloud LB public IP | Production external exposure on managed K8s | Not used directly here (minikube local cluster) |
 | Ingress | External HTTP/HTTPS via one entrypoint + routing rules | Path/host routing, TLS, centralized API entry | jobs-ingress, applications-ingress, frontend-ingress |
 
@@ -275,9 +268,6 @@ frontend   ClusterIP   10.97.136.179   <none>        80/TCP    35h
 ```
 
 #### 2.4 - Network Policies (4 pts)
-
-Created manifest:
-- k8s/09-network-policy.yaml
 
 Manifest content:
 
@@ -329,23 +319,6 @@ $ kubectl exec -n jobboard "$POD" -- python3 -c "import socket; s=socket.create_
 Connected
 ```
 
-Observation and explanation:
-
-1. Expected behavior by policy design:
-	 - jobs-service/applications-service should be allowed.
-	 - random pod (test-block) should be denied.
-
-2. Actual behavior in this cluster:
-	 - jobs-service allowed (Connected) as expected.
-	 - test-block was also allowed (port open), so deny was not enforced.
-
-3. Why this happened:
-	 - NetworkPolicy resources are accepted by API server, but enforcement depends on CNI plugin dataplane support.
-	 - This minikube setup shows no Calico/Cilium-style policy engine pods in kube-system, and behavior confirms no effective deny enforcement.
-
-Learning point:
-	 - Always validate both allowed and denied paths after applying NetworkPolicy; "resource created" does not guarantee runtime enforcement.
-
 ### Task 3 - Persistent Storage & Data Lifecycle (15 pts)
 
 #### 3.1 - Inspect the PersistentVolumeClaim (5 pts)
@@ -386,8 +359,6 @@ Answers:
 	- PostgreSQL data directory is not safe for multiple independent writers at filesystem level from multiple nodes/pods.
 	- In this lab, postgres runs as a single-writer Deployment with strategy Recreate, which matches RWO semantics.
 
-Learning point:
-	- Always check both PVC and PV, because reclaim policy is shown on PV, not PVC.
 
 #### 3.2 - Verify data persistence across pod restarts (5 pts)
 
@@ -435,9 +406,6 @@ Why it survived:
 	- postgres Deployment is configured with strategy: Recreate in this lab.
 	- Kubernetes terminates old pod before starting new one, avoiding two postgres pods trying to mount the same RWO volume simultaneously.
 
-Learning point:
-	- Pod lifecycle is ephemeral; volume lifecycle is durable (unless PVC/PV is explicitly deleted).
-
 #### 3.3 - Manual database backup from Kubernetes (5 pts)
 
 Backup command run and verification:
@@ -460,7 +428,7 @@ $ wc -l k8s-backup-20260816_215818.sql
 115 k8s-backup-20260816_215818.sql
 ```
 
-Restore procedure to a fresh postgres pod (exact commands):
+Restore procedure to a fresh postgres pod:
 
 ```bash
 # 1) Get current postgres pod
@@ -479,9 +447,6 @@ kubectl exec -i -n jobboard "$PG_POD" -- sh -c \
 kubectl exec -n jobboard "$PG_POD" -- sh -c \
   'PGPASSWORD=$POSTGRES_PASSWORD psql -U $POSTGRES_USER -d $POSTGRES_DB -c "\dt"'
 ```
-
-Learning point:
-	- Backup/restore at pod level is the Kubernetes equivalent of traditional DBA operations; kubectl exec is just the transport layer into the running DB container.
 
 ### Task 4 - Scaling & Rolling Updates (25 pts)
 
@@ -529,8 +494,6 @@ Answers:
 	- Existing in-flight requests can complete during pod termination grace period.
 	- If shutdown is not graceful or request is long-running, some requests may fail.
 
-Learning point:
-	- Ready state controls traffic eligibility, not just process liveness.
 
 #### 4.2 - Rolling update with zero downtime (10 pts)
 
@@ -607,9 +570,6 @@ Answers:
 	- kubectl rollout undo deployment/jobs-service -n jobboard
 	- Optional inspection:
 	  - kubectl rollout history deployment/jobs-service -n jobboard
-
-Learning point:
-	- Health/readiness probes are critical to real zero-downtime behavior during rolling updates.
 
 #### 4.3 - HorizontalPodAutoscaler (10 pts)
 
@@ -732,9 +692,6 @@ What Sealed Secrets is:
 3. Result:
 	- Git stores ciphertext only; plaintext secret material is not committed.
 
-Learning point:
-	- Treat RBAC on secrets as critical security boundary, even when using base64 or sealed workflows.
-
 #### 5.2 - Add a ConfigMap for app configuration (6 pts)
 
 Manifest created:
@@ -806,9 +763,6 @@ What happens when you update a ConfigMap:
 
 2. If values are mounted as files (volumes):
 	- Kubelet updates mounted file content eventually (not instant), so many apps can see updates without restart.
-
-Learning point:
-	- Choose injection method based on whether you need dynamic runtime updates or startup-time configuration immutability.
 
 ### Task 6 - Kubernetes CI/CD Integration (15 pts)
 
