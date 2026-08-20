@@ -73,6 +73,7 @@ jobs:
   scan-images:
     runs-on: ubuntu-latest
     needs: [build-images]
+    timeout-minutes: 45
     env:
       POSTGRES_DB: jobboard
       POSTGRES_USER: postgres
@@ -82,26 +83,44 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Trivy
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y wget gnupg lsb-release
-          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | \
-            gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
-          echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | \
-            sudo tee /etc/apt/sources.list.d/trivy.list
-          sudo apt-get update -y
-          sudo apt-get install -y trivy
-
       - name: Build Docker images
         run: docker compose -f lab-job-board/docker-compose.yml build
 
-      - name: Scan images with Trivy
-        run: |
-          trivy image --exit-code 0 --format table --output trivy-jobs-service.txt lab-job-board-jobs-service:latest
-          trivy image --exit-code 0 --format table --output trivy-applications-service.txt lab-job-board-applications-service:latest
-          trivy image --exit-code 0 --format table --output trivy-frontend.txt lab-job-board-frontend:latest
-          trivy image --exit-code 0 --format table --output trivy-nginx.txt lab-job-board-nginx:latest
+      - name: Scan jobs-service image
+        uses: aquasecurity/trivy-action@0.30.0
+        with:
+          scan-type: image
+          image-ref: lab-job-board-jobs-service:latest
+          format: table
+          output: trivy-jobs-service.txt
+          exit-code: "0"
+
+      - name: Scan applications-service image
+        uses: aquasecurity/trivy-action@0.30.0
+        with:
+          scan-type: image
+          image-ref: lab-job-board-applications-service:latest
+          format: table
+          output: trivy-applications-service.txt
+          exit-code: "0"
+
+      - name: Scan frontend image
+        uses: aquasecurity/trivy-action@0.30.0
+        with:
+          scan-type: image
+          image-ref: lab-job-board-frontend:latest
+          format: table
+          output: trivy-frontend.txt
+          exit-code: "0"
+
+      - name: Scan nginx image
+        uses: aquasecurity/trivy-action@0.30.0
+        with:
+          scan-type: image
+          image-ref: lab-job-board-nginx:latest
+          format: table
+          output: trivy-nginx.txt
+          exit-code: "0"
 
       - name: Upload Trivy reports
         uses: actions/upload-artifact@v4
