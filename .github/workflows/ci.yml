@@ -214,8 +214,8 @@ jobs:
 
       - name: Configure kubeconfig
         run: |
-          echo "${{ secrets.KUBECONFIG_BASE64 }}" | base64 -d > kubeconfig.yml
-          chmod 600 kubeconfig.yml
+          echo "${{ secrets.KUBECONFIG_BASE64 }}" | tr -d '\n\r ' | base64 -d > kubeconfig.yml
+          export KUBECONFIG=kubeconfig.yml
 
       - name: Set image tag
         run: echo "IMAGE_TAG=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
