@@ -215,12 +215,30 @@ jobs:
       - name: Configure kubeconfig
         run: |
           echo "${{ secrets.KUBECONFIG_BASE64 }}" | tr -d '\n\r ' | base64 -d > kubeconfig.yml
-          export KUBECONFIG=kubeconfig.yml
+          chmod 600 kubeconfig.yml
+
+      - name: Check kubeconfig server mode
+        id: kube_server
+        shell: bash
+        run: |
+          set -euo pipefail
+          server=$(kubectl config view --kubeconfig kubeconfig.yml --minify -o jsonpath='{.clusters[0].cluster.server}')
+          echo "Detected API server: $server"
+          echo "server=$server" >> "$GITHUB_OUTPUT"
+
+          if [[ "$server" =~ ^https://(127\.0\.0\.1|localhost)(:|/|$) ]]; then
+            echo "can_deploy=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Kubeconfig points to localhost ($server). GitHub-hosted runners cannot reach your local Minikube. Skipping deploy steps."
+          else
+            echo "can_deploy=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Set image tag
+        if: steps.kube_server.outputs.can_deploy == 'true'
         run: echo "IMAGE_TAG=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
 
       - name: Update jobs-service image
+        if: steps.kube_server.outputs.can_deploy == 'true'
         env:
           KUBECONFIG: kubeconfig.yml
         run: |
@@ -230,6 +248,7 @@ jobs:
           kubectl rollout status deployment/jobs-service -n jobboard --timeout=180s
 
       - name: Update applications-service image
+        if: steps.kube_server.outputs.can_deploy == 'true'
         env:
           KUBECONFIG: kubeconfig.yml
         run: |
@@ -239,6 +258,7 @@ jobs:
           kubectl rollout status deployment/applications-service -n jobboard --timeout=180s
 
       - name: Update frontend image
+        if: steps.kube_server.outputs.can_deploy == 'true'
         env:
           KUBECONFIG: kubeconfig.yml
         run: |
@@ -248,6 +268,7 @@ jobs:
           kubectl rollout status deployment/frontend -n jobboard --timeout=180s
 
       - name: Kubernetes smoke tests
+        if: steps.kube_server.outputs.can_deploy == 'true'
         env:
           KUBECONFIG: kubeconfig.yml
         run: |
@@ -267,3 +288,9 @@ jobs:
             test "$jobs_code" = "200"
             test "$apps_code" = "200"
           '
+
+      - name: Skip deploy for local Minikube endpoint
+        if: steps.kube_server.outputs.can_deploy != 'true'
+        run: |
+          echo "Deploy skipped because kubeconfig server is local-only: ${{ steps.kube_server.outputs.server }}"
+          echo "Use a self-hosted runner on your machine or a remotely reachable Kubernetes cluster."
