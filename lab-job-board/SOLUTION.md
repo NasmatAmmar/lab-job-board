@@ -455,4 +455,3 @@ Screenshots:
 
 ![running application at `http://localhost:80`](image-5.png)
 
-# adding a new line just for new commit

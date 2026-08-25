@@ -878,3 +878,11 @@ base64 < kubeconfig.yml | tr -d '\n'
 Execution note:
 - The workflow structure and syntax were validated locally in the repo, but actual deployment execution will occur when GitHub Actions runs on main.
 
+### CI/CD Pipeline with GitHub Actions
+![alt text](image.png)
+
+### All manifests applied: 
+![alt text](image-1.png)
+
+### Application accessible via minikube IP: 
+![alt text](image-2.png)
